@@ -2,6 +2,7 @@ import pybullet as p
 import pybullet_data
 import time
 from robot_controller import RobotController
+from pick_and_place import PickAndPlace, FSMState
 
 # =====================
 # 1. 시뮬레이션 초기화
@@ -30,42 +31,67 @@ p.resetDebugVisualizerCamera(
 plane = p.loadURDF("plane.urdf")
 robot = p.loadURDF(
     "franka_panda/panda.urdf",
-    basePosition=[0, 0, 0],
+    basePosition=[0, 0, 0.05],
     useFixedBase=True
 )
 
-print("환경 로드 완료")
+# =====================
+# 4. 물체 배치 (빨간 박스)
+# =====================
+box_visual = p.createVisualShape(
+    p.GEOM_BOX,
+    halfExtents=[0.03, 0.03, 0.03],
+    rgbaColor=[1, 0, 0, 1]  # 빨간색
+)
+box_collision = p.createCollisionShape(
+    p.GEOM_BOX,
+    halfExtents=[0.03, 0.03, 0.03]
+)
+box = p.createMultiBody(
+    baseMass=0.1,
+    baseCollisionShapeIndex=box_collision,
+    baseVisualShapeIndex=box_visual,
+    basePosition=[0.5, 0, 0.03]  # 물체 초기 위치
+)
+
+print("✅ 환경 로드 완료!")
 
 # =====================
-# 4. 로봇 컨트롤러 초기화
+# 5. FSM Pick & Place 실행
 # =====================
 controller = RobotController(robot)
+# 기존
+controller = RobotController(robot)
+fsm = PickAndPlace(controller)
 
-# =====================
-# 5. IK 테스트 — 목표 좌표로 이동
-# =====================
-target_positions = [
-    [0.5, 0.0, 0.5],   # 위치 1
-    [0.5, 0.3, 0.5],   # 위치 2
-    [0.6, -0.2, 0.6],  # 위치 3
-]
+# 수정
+controller = RobotController(robot)
 
-print("IK 테스트 시작")
+# 초기 자세 안정화 (1초)
+print("✅ 초기 자세 안정화 중...")
+for _ in range(240):
+    p.stepSimulation()
+    import time
+    time.sleep(1./240.)
+print("✅ 안정화 완료!")
 
-for i, target in enumerate(target_positions):
-    print(f"→ 목표 위치 {i+1}: {target}")
+fsm = PickAndPlace(controller)
 
-    # 목표 위치로 이동 (240프레임 = 1초)
-    for _ in range(240):
-        controller.move_to(target)
-        p.stepSimulation()
-        time.sleep(1. / 240.)
+object_pos = [0.5, 0.0, 0.03]   # 물체 위치
+goal_pos   = [0.5, 0.3, 0.03]   # 목표 위치
 
-    print(f"✅ 위치 {i+1} 도달 완료!")
+print("✅ Pick & Place 시작!")
 
-print("모든 IK 테스트 완료")
+while True:
+    state = fsm.run(object_pos, goal_pos)
+    p.stepSimulation()
+    time.sleep(1. / 240.)
+
+    if state == FSMState.DONE:
+        print("✅ Pick & Place 완료!")
+        break
+
 print("종료하려면 Ctrl+C 를 누르세요.")
-
 while True:
     p.stepSimulation()
     time.sleep(1. / 240.)

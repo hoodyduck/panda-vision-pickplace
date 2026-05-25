@@ -1,5 +1,4 @@
 import pybullet as p
-import time
 from utils import JointSmoother
 
 class RobotController:
@@ -7,33 +6,47 @@ class RobotController:
         self.robot_id = robot_id
         self.smoother = JointSmoother(max_delta=0.05, alpha=0.85)
 
-        # Franka Panda 관절 인덱스
-        self.joint_indices = [0, 1, 2, 3, 4, 5, 6]  # 7개 관절
-        self.gripper_indices = [9, 10]                # 그리퍼
-        self.end_effector_index = 11                  # 그리퍼 끝점
+        self.joint_indices      = [0, 1, 2, 3, 4, 5, 6]
+        self.gripper_indices    = [9, 10]
+        self.end_effector_index = 11
+
+        # 시작하자마자 안정적인 자세로 초기화
+        self.reset_pose()
+
+    def reset_pose(self):
+        """
+        로봇을 안정적인 초기 자세로 설정
+        (팔을 위로 든 자세)
+        """
+        init_angles = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+        for i, joint_index in enumerate(self.joint_indices):
+            p.resetJointState(
+                self.robot_id,
+                joint_index,
+                init_angles[i]
+            )
+        self.open_gripper()
+        print("✅ 초기 자세 설정 완료!")
 
     def move_to(self, target_position, target_orientation=None):
-        """
-        목표 좌표로 팔 이동
-        target_position: [x, y, z]
-        """
         if target_orientation is None:
-            target_orientation = p.getQuaternionFromEuler([3.14, 0, 0])
+            target_orientation = p.getQuaternionFromEuler([3.14159, 0, 0])
 
-        # IK 계산
         joint_angles = p.calculateInverseKinematics(
             self.robot_id,
             self.end_effector_index,
             target_position,
             target_orientation,
-            maxNumIterations=100,
+            lowerLimits=[-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
+            upperLimits=[ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973],
+            jointRanges=[ 5.7946,  3.5256,  5.7946,  3.0020,  5.7946,  3.7700,  5.7946],
+            restPoses=   [ 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785],
+            maxNumIterations=200,
             residualThreshold=1e-5
         )
 
-        # Smoothing 적용
         smoothed_angles = self.smoother.smooth(joint_angles[:7])
 
-        # 관절에 적용
         for i, joint_index in enumerate(self.joint_indices):
             p.setJointMotorControl2(
                 self.robot_id,
