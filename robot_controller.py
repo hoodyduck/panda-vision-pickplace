@@ -10,23 +10,35 @@ class RobotController:
         self.gripper_indices    = [9, 10]
         self.end_effector_index = 11
 
-        # 시작하자마자 안정적인 자세로 초기화
+        self.init_angles = [0.0, -1.0, 0.0, -2.8, 0.0, 2.0, 0.785]
+
         self.reset_pose()
 
     def reset_pose(self):
-        """
-        로봇을 안정적인 초기 자세로 설정
-        (팔을 위로 든 자세)
-        """
-        init_angles = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+        # 1단계: 관절 강제 초기화
         for i, joint_index in enumerate(self.joint_indices):
             p.resetJointState(
                 self.robot_id,
                 joint_index,
-                init_angles[i]
+                self.init_angles[i]
             )
+
+        # 2단계: 모터 제어로 자세 유지
+        for i, joint_index in enumerate(self.joint_indices):
+            p.setJointMotorControl2(
+                self.robot_id,
+                joint_index,
+                controlMode=p.POSITION_CONTROL,
+                targetPosition=self.init_angles[i],
+                force=500
+            )
+
         self.open_gripper()
-        print("✅ 초기 자세 설정 완료!")
+
+        # 3단계: smoother 초기화
+        self.smoother.prev_angles = None
+
+        print("✅ 초기 자세 복귀 완료!")
 
     def move_to(self, target_position, target_orientation=None):
         if target_orientation is None:
